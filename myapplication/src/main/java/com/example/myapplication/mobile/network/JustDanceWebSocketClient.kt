@@ -204,13 +204,15 @@ class JustDanceWebSocketClient {
                 val match = soundIndexRegex.find(text)
                 val soundIndex = match?.groupValues?.get(1)?.toIntOrNull() ?: -1
                 android.util.Log.i("JDWS", "JD_PlaySound_ConsoleCommandData received: soundIndex=$soundIndex")
-                val hapticType: Byte = when (soundIndex) {
+                val hapticType: Byte? = when (soundIndex) {
                     in listOf(1, 4, 7) -> 2.toByte() // Gold Move ("YEAH!")
                     in listOf(2, 5, 8) -> 1.toByte() // Star Unlock (⭐)
-                    else -> 2.toByte()
+                    else -> null // Ignorar otros efectos de sonido de menús
                 }
-                onHapticTriggered?.invoke(hapticType)
-            } else if (text.contains("goldmove", ignoreCase = true) || text.contains("yeah", ignoreCase = true)) {
+                if (hapticType != null) {
+                    onHapticTriggered?.invoke(hapticType)
+                }
+            } else if (text.contains("goldmove", ignoreCase = true)) {
                 android.util.Log.i("JDWS", "Detected Gold Move celebration in game message!")
                 onHapticTriggered?.invoke(2.toByte())
             } else if (text.contains("star", ignoreCase = true) || text.contains("diamond", ignoreCase = true)) {
@@ -409,7 +411,14 @@ class JustDanceWebSocketClient {
             "sujeta el mando",
             "sujeta el teléfono",
             "sujeta el telefono",
-            "just dance"
+            "just dance",
+            "usa el mando",
+            "mando de tu consola",
+            "para continuar",
+            "pulse",
+            "pulsa",
+            "press any button",
+            "controller to continue"
         )
     }
 }

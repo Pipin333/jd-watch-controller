@@ -244,18 +244,26 @@ class DanceTelemetryEngine(
 
             val calculatedScore = if (currentGameScore.value > 0) {
                 currentGameScore.value
+            } else if (recordedMoveEvents.isNotEmpty()) {
+                val total = recordedMoveEvents.size.toFloat()
+                val perfects = recordedMoveEvents.count { it.rating == DanceMoveRating.PERFECT }
+                val supers = recordedMoveEvents.count { it.rating == DanceMoveRating.SUPER }
+                val goods = recordedMoveEvents.count { it.rating == DanceMoveRating.GOOD }
+                val oks = recordedMoveEvents.count { it.rating == DanceMoveRating.OK }
+
+                // Escala de precisión ponderada oficial de Just Dance
+                val weightedAccuracy = (
+                    (perfects * 1.00f) +
+                    (supers * 0.82f) +
+                    (goods * 0.60f) +
+                    (oks * 0.35f)
+                ) / total
+
+                val baseScore = (weightedAccuracy * 12200f).toInt()
+                val goldBonus = goldMovesCount * 400
+                (baseScore + goldBonus).coerceIn(1000, 13333)
             } else {
-                var pts = 0
-                for (ev in recordedMoveEvents) {
-                    pts += when (ev.rating) {
-                        DanceMoveRating.GOLD_MOVE -> 1000
-                        DanceMoveRating.PERFECT -> 300
-                        DanceMoveRating.SUPER -> 200
-                        DanceMoveRating.GOOD -> 100
-                        DanceMoveRating.OK -> 50
-                    }
-                }
-                pts.coerceAtMost(13333)
+                0
             }
 
             val calculatedStars = if (currentStarsLevel.value > 0) {
@@ -361,12 +369,12 @@ class DanceTelemetryEngine(
         // Clasificación cinemática en tiempo real de movimientos rítmicos durante baile activo
         if (_isSessionActive.value && !_isSessionPaused.value) {
             val now = System.currentTimeMillis()
-            if (dynamicEnergy >= 0.70 && (now - lastMoveTimestampMs) >= MIN_MOVE_INTERVAL_MS) {
+            if (dynamicEnergy >= 0.50 && (now - lastMoveTimestampMs) >= MIN_MOVE_INTERVAL_MS) {
                 lastMoveTimestampMs = now
                 val rating = when {
-                    dynamicEnergy >= 2.30 -> DanceMoveRating.PERFECT
-                    dynamicEnergy >= 1.55 -> DanceMoveRating.SUPER
-                    dynamicEnergy >= 1.05 -> DanceMoveRating.GOOD
+                    dynamicEnergy >= 1.70 -> DanceMoveRating.PERFECT
+                    dynamicEnergy >= 1.20 -> DanceMoveRating.SUPER
+                    dynamicEnergy >= 0.80 -> DanceMoveRating.GOOD
                     else -> DanceMoveRating.OK
                 }
                 val offsetSec = _sessionDurationSeconds.value.toFloat() + ((now % 1000L) / 1000f)

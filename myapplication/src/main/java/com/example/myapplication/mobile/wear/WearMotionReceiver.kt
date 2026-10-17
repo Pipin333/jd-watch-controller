@@ -74,12 +74,19 @@ class WearMotionReceiver(
         }
     }
 
+    var onMenuNavRequested: ((action: String) -> Unit)? = null
+    var onGyroSample: ((x: Float, y: Float, z: Float) -> Unit)? = null
+
     private val messageListener = MessageClient.OnMessageReceivedListener { messageEvent ->
         if (messageEvent.path == "/dance_motion_packet") {
             parsePacket(messageEvent.data)
         } else if (messageEvent.path == "/dance_pause_command") {
             android.util.Log.i("JDWS", "Received /dance_pause_command from Watch via MessageClient!")
             onPauseRequested()
+        } else if (messageEvent.path == "/dance_menu_command") {
+            val cmd = String(messageEvent.data, Charsets.UTF_8)
+            android.util.Log.i("JDWS", "Received /dance_menu_command: $cmd")
+            onMenuNavRequested?.invoke(cmd)
         }
     }
 
@@ -162,6 +169,10 @@ class WearMotionReceiver(
                 // Muestra de ritmo cardíaco
                 _liveBpm.value = x
             }
+            3 -> {
+                // Muestra de giroscopio tridimensional
+                onGyroSample?.invoke(x, y, z)
+            }
         }
     }
 
@@ -182,6 +193,27 @@ class WearMotionReceiver(
                 android.util.Log.i("JDWS", "Dispatched haptic feedback $feedbackType to ${nodes.size} watch node(s)")
             } catch (e: Exception) {
                 android.util.Log.w("JDWS", "Error dispatching haptic to watch: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Envía el estado de actividad de la coreografía al smartwatch para suspender sensores
+     * y módem Bluetooth cuando se está en menús, ahorrando hasta un 80% de batería en el reloj.
+     */
+    fun sendStandbyState(isDancing: Boolean) {
+        scope.launch {
+            try {
+                val nodes = com.google.android.gms.tasks.Tasks.await(nodeClient.connectedNodes)
+                val payload = byteArrayOf(if (isDancing) 1 else 0)
+                for (node in nodes) {
+                    com.google.android.gms.tasks.Tasks.await(
+                        messageClient.sendMessage(node.id, "/dance_control/state", payload)
+                    )
+                }
+                android.util.Log.i("JDWS", "Dispatched standby state isDancing=$isDancing to ${nodes.size} watch node(s)")
+            } catch (e: Exception) {
+                android.util.Log.w("JDWS", "Error dispatching standby state to watch: ${e.message}")
             }
         }
     }

@@ -47,6 +47,7 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
     private var wakeLock: PowerManager.WakeLock? = null
 
     private var accelerometer: Sensor? = null
+    private var gyroscope: Sensor? = null
     private var heartRateSensor: Sensor? = null
 
     // ChannelClient OutputStream
@@ -64,6 +65,9 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
     // State Flows for UI updates
     private val _isStreaming = MutableStateFlow(false)
     val isStreaming: StateFlow<Boolean> = _isStreaming.asStateFlow()
+
+    private val _isDancing = MutableStateFlow(false)
+    val isDancing: StateFlow<Boolean> = _isDancing.asStateFlow()
 
     private val _currentX = MutableStateFlow(0f)
     val currentX: StateFlow<Float> = _currentX.asStateFlow()
@@ -101,6 +105,7 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
         powerManager = getSystemService(POWER_SERVICE) as PowerManager
 
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         heartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
 
         createNotificationChannel()
@@ -129,10 +134,9 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
         this.outputStream = stream
     }
 
-    fun startStreaming() {
-        if (_isStreaming.value) return
-
-        _isStreaming.value = true
+    @Synchronized
+    private fun activateSensors() {
+        if (!_isStreaming.value) return
 
         // 1. Acquire PARTIAL_WAKE_LOCK so screen dimming / arm lowering never pauses sensor reads
         if (wakeLock == null) {
@@ -145,21 +149,15 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
         }
         wakeLock?.acquire(10 * 60 * 1000L /* 10 minutes timeout safety fallback */)
 
-        // 2. Start Foreground Service with notification
-        val notification = buildForegroundNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        // 2. High-priority background thread for sensors (isolated from Main UI thread)
+        if (sensorThread == null) {
+            sensorThread = HandlerThread("DanceSensorThread", Process.THREAD_PRIORITY_MORE_FAVORABLE).apply {
+                start()
+                sensorHandler = Handler(looper)
+            }
         }
 
-        // 3. Create dedicated high-priority background thread for sensors (isolated from Main UI thread)
-        sensorThread = HandlerThread("DanceSensorThread", Process.THREAD_PRIORITY_MORE_FAVORABLE).apply {
-            start()
-            sensorHandler = Handler(looper)
-        }
-
-        // 4. Register Accelerometer @ 20,000 us (exact 50Hz) with 0 maxReportLatencyUs (zero batching delay)
+        // 3. Register Accelerometer @ 20,000 us (exact 50Hz)
         accelerometer?.let {
             sensorManager.registerListener(
                 this,
@@ -169,6 +167,19 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
                 sensorHandler
             )
         }
+
+        // 4. Register Gyroscope @ 20,000 us (exact 50Hz)
+        gyroscope?.let {
+            sensorManager.registerListener(
+                this,
+                it,
+                20_000,
+                0,
+                sensorHandler
+            )
+        }
+
+        // 5. Register Heart Rate sensor
         heartRateSensor?.let {
             sensorManager.registerListener(
                 this,
@@ -178,17 +189,63 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
                 sensorHandler
             )
         }
+    }
 
-        // 5. Connect to paired phone's ChannelClient automatically
+    @Synchronized
+    private fun deactivateSensors() {
+        // Unregister all sensors (shuts down optical PPG green LEDs and high-rate IMU interrupts)
+        sensorManager.unregisterListener(this)
+        sensorThread?.quitSafely()
+        sensorThread = null
+        sensorHandler = null
+
+        // Release WakeLock so the SoC can enter deep sleep states while resting in menus
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        _currentHz.value = 0
+    }
+
+    fun setDanceActiveState(active: Boolean) {
+        if (_isDancing.value == active) return
+        _isDancing.value = active
+        if (active) {
+            activateSensors()
+        } else {
+            deactivateSensors()
+        }
+    }
+
+    fun startStreaming() {
+        if (_isStreaming.value) return
+
+        _isStreaming.value = true
+
+        // 1. Start Foreground Service with notification
+        val notification = buildForegroundNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        // 2. Connect to paired phone's ChannelClient automatically
         connectToPhoneChannel()
 
-        // 6. Launch background packet writer job
+        // 3. Launch background packet writer job with batch flushing (flush every 2 frames, ~40ms)
         outputStreamWriteJob = lifecycleScope.launch(Dispatchers.IO) {
+            var packetCounter = 0
             packetQueue.collect { bytes ->
                 try {
                     outputStream?.apply {
                         write(bytes)
-                        flush()
+                        packetCounter++
+                        if (packetCounter >= 2) {
+                            flush()
+                            packetCounter = 0
+                        }
                     }
                 } catch (_: Exception) {
                     // Output stream error / disconnection handled silently
@@ -196,7 +253,7 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
             }
         }
 
-        // 6. Launch diagnostic Hz counter job using real elapsed time delta
+        // 4. Launch diagnostic Hz counter job using real elapsed time delta
         hzCalculatorJob = lifecycleScope.launch(Dispatchers.Default) {
             var lastCalcTime = SystemClock.elapsedRealtime()
             while (_isStreaming.value) {
@@ -211,20 +268,18 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
                 lastCalcTime = now
             }
         }
+
+        // 5. Activate sensors initially (phone will sync to standby if currently paused/in menu)
+        setDanceActiveState(true)
     }
 
     fun stopStreaming() {
         if (!_isStreaming.value) return
 
         _isStreaming.value = false
+        setDanceActiveState(false)
 
-        // 1. Unregister sensor listeners and stop background thread
-        sensorManager.unregisterListener(this)
-        sensorThread?.quitSafely()
-        sensorThread = null
-        sensorHandler = null
-
-        // 2. Cancel jobs & clear buffers
+        // Cancel jobs & clear buffers
         outputStreamWriteJob?.cancel()
         outputStreamWriteJob = null
         hzCalculatorJob?.cancel()
@@ -232,18 +287,12 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
         channelJob?.cancel()
         channelJob = null
         try {
+            outputStream?.flush()
             outputStream?.close()
         } catch (_: Exception) {}
         outputStream = null
 
-        // 3. Release WakeLock
-        wakeLock?.let {
-            if (it.isHeld) {
-                it.release()
-            }
-        }
-
-        // 4. Stop Foreground Service
+        // Stop Foreground Service
         stopForeground(STOP_FOREGROUND_REMOVE)
         _currentHz.value = 0
     }
@@ -274,7 +323,7 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null || !_isStreaming.value) return
+        if (event == null || !_isStreaming.value || !_isDancing.value) return
 
         val timestamp = System.currentTimeMillis()
 
@@ -292,9 +341,6 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
 
                 eventCountInSecond++
 
-                // Detección de gesto de sacudida rápida de muñeca para pausar
-                detectWristPauseGesture(rx, rz)
-
                 // Always send the 21-byte binary frame at full 50 Hz to the network stream
                 val packet = BinaryPacketEncoder.encodeAccelerometer(timestamp, rx, ry, rz)
                 packetQueue.tryEmit(packet)
@@ -309,6 +355,23 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
                 }
             }
 
+            Sensor.TYPE_GYROSCOPE -> {
+                val rawGx = event.values[0]
+                val rawGy = event.values[1]
+                val rawGz = event.values[2]
+
+                val remapped = MotionRemapper.remapGyroscope(rawGx, rawGy, rawGz, _wristPlacement.value)
+                val rgx = remapped[0]
+                val rgy = remapped[1]
+                val rgz = remapped[2]
+
+                // Detección de pausa por triple giro/torsión de muñeca (vaivén rápido de antebrazo con giroscopio)
+                detectWristTwistPauseGesture(rgy)
+
+                val packet = BinaryPacketEncoder.encodeGyroscope(timestamp, rgx, rgy, rgz)
+                packetQueue.tryEmit(packet)
+            }
+
             Sensor.TYPE_HEART_RATE -> {
                 val bpm = event.values[0]
                 if (bpm > 0) {
@@ -320,31 +383,39 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
         }
     }
 
-    // Detector de gesto de pausa por triple sacudida intencional de muñeca
-    private var lastFlickTime = 0L
-    private var flickCount = 0
+    // Detector de gesto de pausa por triple giro/torsión de muñeca (vaivén rápido de antebrazo vía giroscopio)
+    private var lastTwistTime = 0L
+    private var twistCount = 0
+    private var lastTwistSign = 0
     private var lastPauseTriggerTime = 0L
-    private val FLICK_THRESHOLD = 36.0f // ~3.7g: umbral alto para evitar falsos positivos durante coreografías intensas
-    private val FLICK_WINDOW_MS = 650L
+    private val TWIST_THRESHOLD = 5.2f // ~300°/s: giro rápido y ergonómico de muñeca sobre el eje del antebrazo
+    private val TWIST_WINDOW_MS = 650L
     private val PAUSE_DEBOUNCE_MS = 3000L
 
-    private fun detectWristPauseGesture(rx: Float, rz: Float) {
+    private fun detectWristTwistPauseGesture(rgy: Float) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastPauseTriggerTime < PAUSE_DEBOUNCE_MS) return
 
-        val lateralForce = kotlin.math.abs(rx)
-        if (lateralForce > FLICK_THRESHOLD) {
-            if (now - lastFlickTime in 100..FLICK_WINDOW_MS) {
-                flickCount++
-                if (flickCount >= 3) {
-                    lastPauseTriggerTime = now
-                    flickCount = 0
-                    sendPauseCommand()
+        val rollVelocity = kotlin.math.abs(rgy)
+        if (rollVelocity > TWIST_THRESHOLD) {
+            val currentSign = if (rgy > 0) 1 else -1
+            if (now - lastTwistTime in 80..TWIST_WINDOW_MS) {
+                // Requiere alternancia estricta de sentido de rotación (+ -> - -> +)
+                if (currentSign != lastTwistSign) {
+                    twistCount++
+                    lastTwistSign = currentSign
+                    if (twistCount >= 3) {
+                        lastPauseTriggerTime = now
+                        twistCount = 0
+                        lastTwistSign = 0
+                        sendPauseCommand()
+                    }
                 }
-            } else if (now - lastFlickTime > FLICK_WINDOW_MS) {
-                flickCount = 1
+            } else if (now - lastTwistTime > TWIST_WINDOW_MS) {
+                twistCount = 1
+                lastTwistSign = currentSign
             }
-            lastFlickTime = now
+            lastTwistTime = now
         }
     }
 
@@ -444,11 +515,39 @@ class SensorStreamingService : LifecycleService(), SensorEventListener {
         } catch (_: Exception) {}
     }
 
+    /**
+     * Envía comandos de navegación de menú ("LEFT", "RIGHT", "CONFIRM") al teléfono
+     * accionados mediante el bisel rotatorio o toques en pantalla durante el modo Standby.
+     */
+    fun sendMenuNavigationCommand(action: String) {
+        playHapticFeedback(HAPTIC_PERFECT)
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val nodeClient = com.google.android.gms.wearable.Wearable.getNodeClient(this@SensorStreamingService)
+                val messageClient = com.google.android.gms.wearable.Wearable.getMessageClient(this@SensorStreamingService)
+                val nodes = com.google.android.gms.tasks.Tasks.await(nodeClient.connectedNodes)
+                val data = action.toByteArray(Charsets.UTF_8)
+                for (node in nodes) {
+                    com.google.android.gms.tasks.Tasks.await(
+                        messageClient.sendMessage(node.id, "/dance_menu_command", data)
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     private val messageListener = com.google.android.gms.wearable.MessageClient.OnMessageReceivedListener { messageEvent ->
-        if (messageEvent.path == "/dance_haptic_feedback") {
-            val type = messageEvent.data.firstOrNull() ?: HAPTIC_STAR
-            android.util.Log.i("JDWS_WATCH", "Received /dance_haptic_feedback type: $type")
-            playHapticFeedback(type)
+        when (messageEvent.path) {
+            "/dance_haptic_feedback" -> {
+                val type = messageEvent.data.firstOrNull() ?: HAPTIC_STAR
+                android.util.Log.i("JDWS_WATCH", "Received /dance_haptic_feedback type: $type")
+                playHapticFeedback(type)
+            }
+            "/dance_control/state" -> {
+                val isDancing = messageEvent.data.firstOrNull() == 1.toByte()
+                android.util.Log.i("JDWS_WATCH", "Received /dance_control/state isDancing: $isDancing")
+                setDanceActiveState(isDancing)
+            }
         }
     }
 

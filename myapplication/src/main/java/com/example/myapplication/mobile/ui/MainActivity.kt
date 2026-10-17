@@ -83,6 +83,7 @@ import com.example.myapplication.mobile.telemetry.DanceSessionHistoryManager
 import com.example.myapplication.mobile.telemetry.DanceTelemetryEngine
 import com.example.myapplication.mobile.telemetry.HeartRateZone
 import com.example.myapplication.mobile.wear.WearMotionReceiver
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -151,7 +152,15 @@ class MainActivity : ComponentActivity() {
                 // 2. Procesamiento de energía cinemática en tiempo real (convertido a Gs)
                 telemetryEngine.feedMotionSample(x / 9.80665f, y / 9.80665f, z / 9.80665f)
             }
-        )
+        ).apply {
+            onMenuNavRequested = { action ->
+                when (action) {
+                    "RIGHT" -> webSocketClient.navigateRight()
+                    "LEFT" -> webSocketClient.navigateLeft()
+                    "CONFIRM" -> webSocketClient.confirmSelection()
+                }
+            }
+        }
 
         wearReceiver.start()
 
@@ -194,10 +203,23 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Sincronizar estado de standby cuando el reloj se conecta o reconecta
+        lifecycleScope.launch {
+            wearReceiver.isWatchConnected.collect { connected ->
+                if (connected) {
+                    wearReceiver.sendStandbyState(webSocketClient.isScoringActive.value)
+                }
+            }
+        }
+
         // Sincronizar ciclo de vida de la coreografía con la sesión Sweat:
         // Las pausas intermedias pausan el cronómetro sin cerrar ni fragmentar el historial.
+        var autoRecapJob: Job? = null
         lifecycleScope.launch {
             webSocketClient.isScoringActive.collect { isScoring ->
+                autoRecapJob?.cancel()
+                wearReceiver.sendStandbyState(isScoring)
+
                 if (isScoring) {
                     if (telemetryEngine.isSessionActive.value) {
                         telemetryEngine.resumeSession()
@@ -207,6 +229,14 @@ class MainActivity : ComponentActivity() {
                 } else {
                     if (telemetryEngine.isSessionActive.value) {
                         telemetryEngine.pauseSession()
+                        // Auto-cierre de sesión si pasan 8 segundos de calma tras haber bailado >= 20 segundos
+                        autoRecapJob = lifecycleScope.launch {
+                            kotlinx.coroutines.delay(8000L)
+                            if (telemetryEngine.isSessionActive.value && telemetryEngine.sessionDurationSeconds.value >= 20L) {
+                                android.util.Log.i("MainActivity", "Auto-recap triggered by 8s post-song inactivity")
+                                telemetryEngine.stopSession()
+                            }
+                        }
                     }
                 }
             }

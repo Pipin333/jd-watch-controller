@@ -13,6 +13,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,13 +26,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.rotary.RotaryScrollEvent
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -137,6 +145,9 @@ class MainActivity : ComponentActivity() {
                     },
                     onPause = {
                         sensorService?.sendPauseCommand()
+                    },
+                    onMenuNav = { action ->
+                        sensorService?.sendMenuNavigationCommand(action)
                     }
                 )
             }
@@ -164,15 +175,25 @@ fun WearApp(
     isBound: Boolean,
     onToggleStreaming: () -> Unit,
     onToggleWristPlacement: () -> Unit,
-    onPause: () -> Unit
+    onPause: () -> Unit,
+    onMenuNav: (String) -> Unit
 ) {
     val isStreaming = service?.isStreaming?.collectAsState()?.value ?: false
+    val isDancing = service?.isDancing?.collectAsState()?.value ?: false
     val x = service?.currentX?.collectAsState()?.value ?: 0f
     val y = service?.currentY?.collectAsState()?.value ?: 0f
     val z = service?.currentZ?.collectAsState()?.value ?: 0f
     val bpm = service?.currentBpm?.collectAsState()?.value ?: 0f
     val hz = service?.currentHz?.collectAsState()?.value ?: 0
     val wristPlacement = service?.wristPlacement?.collectAsState()?.value ?: WristPlacement.RIGHT_WRIST
+
+    val focusRequester = remember { FocusRequester() }
+    var accumulatedScroll by remember { mutableStateOf(0f) }
+    val ROTARY_THRESHOLD = 36f
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     Scaffold(
         timeText = { TimeText() }
@@ -181,58 +202,137 @@ fun WearApp(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .focusRequester(focusRequester)
+                .focusable()
+                .onRotaryScrollEvent { event: RotaryScrollEvent ->
+                    if (isStreaming && !isDancing) {
+                        accumulatedScroll += event.verticalScrollPixels
+                        if (accumulatedScroll >= ROTARY_THRESHOLD) {
+                            onMenuNav("RIGHT")
+                            accumulatedScroll = 0f
+                            true
+                        } else if (accumulatedScroll <= -ROTARY_THRESHOLD) {
+                            onMenuNav("LEFT")
+                            accumulatedScroll = 0f
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                }
                 .padding(horizontal = 14.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 1. Top bar: Wrist toggle & Heart rate
+            // 1. Top bar: Wrist toggle & Status
             val wristLabel = if (wristPlacement == WristPlacement.RIGHT_WRIST) "✋ Der" else "🤚 Izq (Esp)"
-            val bpmText = if (bpm > 0) " • ❤️${bpm.toInt()}" else ""
+            val statusSuffix = when {
+                !isStreaming -> ""
+                !isDancing -> " • 💤 MENÚ"
+                bpm > 0 -> " • ${hz}Hz ❤️${bpm.toInt()}"
+                else -> " • ${hz}Hz"
+            }
             Chip(
                 onClick = onToggleWristPlacement,
                 label = {
                     Text(
-                        text = "$wristLabel • ${hz}Hz$bpmText",
+                        text = "$wristLabel$statusSuffix",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center
                     )
                 },
-                colors = ChipDefaults.chipColors(backgroundColor = Color(0xFF1E293B)),
+                colors = ChipDefaults.chipColors(
+                    backgroundColor = if (isStreaming && isDancing) Color(0xFF064E3B) else Color(0xFF1E293B)
+                ),
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
                     .height(34.dp)
             )
 
-            // 2. Center: Status, live acceleration and Shake Gesture Hint
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
-                    .padding(vertical = 6.dp, horizontal = 8.dp)
-            ) {
-                Text(
-                    text = if (isStreaming) "TRANSMITIENDO" else "LISTO",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isStreaming) Color(0xFF4ADE80) else Color(0xFF94A3B8)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                val xFormatted = String.format(Locale.US, "%+05.1f", x)
-                val yFormatted = String.format(Locale.US, "%+05.1f", y)
-                val zFormatted = String.format(Locale.US, "%+05.1f", z)
-                Text(
-                    text = "X:$xFormatted Y:$yFormatted Z:$zFormatted",
-                    fontSize = 10.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF38BDF8)
-                )
-                if (isStreaming) {
+            // 2. Center: Status card (Bezel Navigator in Standby vs Dancing Telemetry)
+            if (!isStreaming) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                        .padding(vertical = 8.dp, horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "LISTO",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8)
+                    )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "👋 Sacudida doble = Pausa",
+                        text = "Pulsa Iniciar para conectar",
+                        fontSize = 10.sp,
+                        color = Color(0xFF64748B),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else if (!isDancing) {
+                // Standby / Menu Navigator Mode: Saves battery by sleeping sensors & allows Bezel Navigation
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                        .clickable { onMenuNav("CONFIRM") }
+                        .padding(vertical = 6.dp, horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "🔄 NAVEGAR MENÚ",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFBBF24)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Gira el bisel ◀ ▶",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Toca aquí para seleccionar ✔",
+                        fontSize = 9.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+            } else {
+                // Active Dance Mode: Minimalist AMOLED dark layout with live 50Hz metrics
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .background(Color(0xFF0F172A), RoundedCornerShape(12.dp))
+                        .padding(vertical = 6.dp, horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "💃 BAILANDO",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4ADE80)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    val xFormatted = String.format(Locale.US, "%+05.1f", x)
+                    val yFormatted = String.format(Locale.US, "%+05.1f", y)
+                    val zFormatted = String.format(Locale.US, "%+05.1f", z)
+                    Text(
+                        text = "X:$xFormatted Y:$yFormatted Z:$zFormatted",
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF38BDF8)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "🔄 Gira la muñeca 3x para pausar",
                         fontSize = 9.sp,
                         color = Color(0xFFFCD34D),
                         fontWeight = FontWeight.Medium
@@ -295,7 +395,8 @@ fun WearAppPreview() {
             isBound = false,
             onToggleStreaming = {},
             onToggleWristPlacement = {},
-            onPause = {}
+            onPause = {},
+            onMenuNav = {}
         )
     }
 }

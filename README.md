@@ -1,8 +1,8 @@
-# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.1
+# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.2
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Wear%20OS-brightgreen.svg)](https://developer.android.com)
-[![Release](https://img.shields.io/badge/Release-v0.1.1-magenta.svg)](https://github.com/Pipin333/jd-watch-controller/releases)
+[![Release](https://img.shields.io/badge/Release-v0.1.2-magenta.svg)](https://github.com/Pipin333/jd-watch-controller/releases)
 
 **[English](README.md)** • [Español](README_ES.md) • [Português](README_PT.md)
 
@@ -11,19 +11,14 @@
 
 ---
 
-## 🌟 What's New in v0.1.1
+## 🌟 What's New in v0.1.2
 
-* 📈 **Color-Coded Move Timeline Ribbon:** Interactive timeline visualization plotting your moves over the choreography with Ubisoft's iconic scoring palette:
-  * 🟢 **PERFECT:** Neon Green (`#00FF88`)
-  * 🔷 **SUPER:** Neon Turquoise / Cyan (`#00E5FF`)
-  * 🔵 **GOOD:** Electric Blue (`#2979FF`)
-  * 🟣 **OK:** Neon Purple (`#A855F7`)
-  * 🌟 **YEAH! / GOLD MOVE:** Ubisoft Gold (`#FFD700`)
-* 🎯 **Move Accuracy Breakdown:** Immediate count and percentage distribution for every move rating (Perfect, Super, Good, OK) and total Gold Moves nailed.
-* 🏆 **Game Performance & Star Badges:** Detailed recording of official score (pts) and star progression (1–5 Stars, Superstar 👑, Megastar 💎) plus dancer index (Coach 1–4).
-* ❤️ **Heart Rate & Kinetic Zones Segmented Ribbon:** Multi-colored aerobic/anaerobic progress bar tracking your cardiovascular effort (Rest/Warmup, Fat Burn, Cardio Aerobic, Anaerobic Intense, Max Effort) and peak G-force acceleration.
-* 📂 **Expandable Session History Cards:** Tap any song card in your history to reveal its full dance telemetry ribbon, biometrics, and precision chips.
-* ⚡ **Lean Watch Architecture:** The smartwatch streams pure 50 Hz accelerometer packets to conserve battery life; all kinematic analysis, rhythm detection, and rendering are handled on the smartphone.
+* 🔋 **Smartwatch Auto-Sleep & Battery Shield:** Automatic Standby Mode synchronized with the phone's live game scoring status (`isScoringActive`). During menus and song selection, the watch deactivates sensors and powers down the optical PPG green LEDs, releases the CPU WakeLock, switches the AMOLED screen to deep black, and batches Bluetooth flush calls (~40 ms intervals to allow BT low-power sniff mode), cutting watch battery drain by up to 80%!
+* 🔄 **Rotary Bezel Menu Navigation:** Navigate Just Dance song carousels and menus directly from your wrist by rotating the smartwatch bezel (`RIGHT` / `LEFT`) with crisp haptic click feedback, and tap the screen to `CONFIRM` selection.
+* 🧭 **6-Axis Sensor Fusion (Accelerometer + Gyroscope):** Integrated 50 Hz 3D angular velocity (`TYPE_GYROSCOPE`, packet type `0x03`) alongside linear acceleration, with automatic sagittal mirroring for left-wrist dancers.
+* ⏱️ **Auto-Recap Watchdog:** Automatic 8-second post-song inactivity timer that gracefully finalizes and presents the detailed Sweat session recap even when community mods or Legacy PC skip the `"recap"` packet.
+* 🎯 **Calibrated Weighted Scoring Curve:** Implemented the official Just Dance accuracy formula ($1.00 \times \text{Perfect} + 0.82 \times \text{Super} + 0.60 \times \text{Good} + 0.35 \times \text{OK}$) yielding authentic ~11.5k+ scores, with calibrated dynamic wrist G-force thresholds (`PERFECT >= 1.70G`, `SUPER >= 1.20G`).
+* 🛡️ **UI Tooltip Blacklist & False Gold Move Fix:** Sanitized sound-effect indices (`else -> null`) eliminating spurious Gold Moves, and filtered console controller prompts (*"Usa el mando de tu consola para continuar"*) from corrupting song titles.
 
 ---
 

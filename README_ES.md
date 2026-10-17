@@ -1,4 +1,4 @@
-# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.1
+# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.2
 
 [English](README.md) • **[Español](README_ES.md)** • [Português](README_PT.md)
 
@@ -7,19 +7,14 @@
 
 ---
 
-## 🌟 Novedades en v0.1.1
+## 🌟 Novedades en v0.1.2
 
-* 📈 **Línea Temporal de Movimientos por Colores (Move Ribbon):** Visualización interactiva en tiempo real y en diferido de cada movimiento realizado sobre la pista con la paleta oficial de Just Dance:
-  * 🟢 **PERFECT:** Verde neón (`#00FF88`)
-  * 🔷 **SUPER:** Turquesa / Cian neón (`#00E5FF`)
-  * 🔵 **GOOD:** Azul eléctrico (`#2979FF`)
-  * 🟣 **OK:** Morado neón (`#A855F7`)
-  * 🌟 **YEAH! / GOLD MOVE:** Dorado Ubisoft (`#FFD700`)
-* 🎯 **Desglose de Precisión Rítmica:** Conteo y porcentajes instantáneos de cada calificación de paso (Perfect, Super, Good, OK) y ráfagas de Gold Moves conseguidos.
-* 🏆 **Rendimiento de Juego y Medallas de Estrellas:** Registro fiel de la puntuación oficial en puntos y nivel de estrellas (1–5 Estrellas, Superstar 👑, Megastar 💎) junto con el bailarín activo (Coach 1–4).
-* ❤️ **Barra Segmentada de Zonas Aeróbicas y Anaeróbicas:** Visualización proporcional del esfuerzo cardiovascular (Reposo, Quema de Grasa, Cardio Aeróbico, Anaeróbico Intenso y Máximo Esfuerzo) y aceleración de Pico G.
-* 📂 **Tarjetas Expandibles de Historial:** Toca cualquier canción guardada en el historial para desplegar su gráfico temporal completo de movimientos, biometría y métricas de precisión.
-* ⚡ **Arquitectura Liviana en el Reloj:** El smartwatch solo transmite acelerómetro puro a 50 Hz para cuidar la batería; el teléfono procesa toda la cinemática, detección de ritmo y renderizado.
+* 🔋 **Modo Standby y Escudo de Batería en el Reloj:** Suspensión automática sincronizada con el estado real del juego (`isScoringActive`). Durante menús y pausas, el reloj apaga por completo los sensores y los LEDs verdes PPG ópticos, libera el WakeLock del procesador, cambia la pantalla a negro absoluto AMOLED y agrupa las transmisiones Bluetooth cada ~40 ms (permitiendo modo de bajo consumo sniff), reduciendo el consumo del reloj hasta un 80%.
+* 🔄 **Navegación de Menús con Bisel Rotatorio:** Explora las canciones y menús de Just Dance girando el bisel físico o virtual del reloj (`DERECHA` / `IZQUIERDA`) con respuesta háptica de micro-click instantáneo, y toca la pantalla para `CONFIRMAR` la selección.
+* 🧭 **Fusión de Sensores de 6 Ejes (Acelerómetro + Giroscopio):** Integración de velocidad angular 3D a 50 Hz (`TYPE_GYROSCOPE`, paquete tipo `0x03`) junto con aceleración lineal, con espejado de orientación para muñeca izquierda.
+* ⏱️ **Cierre Automático de Canción (Auto-Recap):** Temporizador de seguridad de 8 segundos tras finalizar el baile que guarda la sesión Sweat y muestra el resumen completo con gráfico de movimientos, incluso si mods comunitarios o Legacy PC no envían el paquete de `"recap"`.
+* 🎯 **Curva de Puntuación Ponderada Oficial:** Calibración matemática exacta de precisión Just Dance ($1.00 \times \text{Perfect} + 0.82 \times \text{Super} + 0.60 \times \text{Good} + 0.35 \times \text{OK}$) para puntajes realistas de ~11.5k+, con umbrales cinéticos de muñeca ajustados (`PERFECT >= 1.70G`, `SUPER >= 1.20G`).
+* 🛡️ **Filtro de Mensajes de Consola y Corrección de Gold Moves:** Mapeo estricto de sonidos (`else -> null`) eliminando falsos Gold Moves, y lista negra de textos del juego que evita que `"Usa el mando de tu consola para continuar"` sobreescriba el título de la canción.
 
 ---
 

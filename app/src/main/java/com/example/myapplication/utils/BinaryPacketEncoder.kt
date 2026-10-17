@@ -17,6 +17,7 @@ object BinaryPacketEncoder {
 
     const val TYPE_ACCELEROMETER: Byte = 0x01
     const val TYPE_HEART_RATE: Byte = 0x02
+    const val TYPE_GYROSCOPE: Byte = 0x03
     const val PACKET_SIZE_BYTES: Int = 21
 
     /**
@@ -35,6 +36,25 @@ object BinaryPacketEncoder {
             putFloat(x)
             putFloat(y)
             putFloat(z)
+        }.array()
+    }
+
+    /**
+     * Encodes 3-axis gyroscope angular velocity readings (rad/s) into a 21-byte Little Endian ByteArray.
+     */
+    fun encodeGyroscope(
+        timestamp: Long,
+        gx: Float,
+        gy: Float,
+        gz: Float
+    ): ByteArray {
+        return ByteBuffer.allocate(PACKET_SIZE_BYTES).apply {
+            order(ByteOrder.LITTLE_ENDIAN)
+            put(TYPE_GYROSCOPE)
+            putLong(timestamp)
+            putFloat(gx)
+            putFloat(gy)
+            putFloat(gz)
         }.array()
     }
 

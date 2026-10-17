@@ -26,4 +26,22 @@ object MotionRemapper {
             WristPlacement.LEFT_WRIST_MIRROR -> floatArrayOf(-rawX, rawY, rawZ)
         }
     }
+
+    /**
+     * Remaps raw gyroscope [rawGx, rawGy, rawGz] according to [WristPlacement].
+     *
+     * - [WristPlacement.RIGHT_WRIST]: Retains original angular velocity axes.
+     * - [WristPlacement.LEFT_WRIST_MIRROR]: Inverts pitch and yaw (pseudovector reflection).
+     */
+    fun remapGyroscope(
+        rawGx: Float,
+        rawGy: Float,
+        rawGz: Float,
+        wristPlacement: WristPlacement
+    ): FloatArray {
+        return when (wristPlacement) {
+            WristPlacement.RIGHT_WRIST -> floatArrayOf(rawGx, rawGy, rawGz)
+            WristPlacement.LEFT_WRIST_MIRROR -> floatArrayOf(rawGx, -rawGy, -rawGz)
+        }
+    }
 }
