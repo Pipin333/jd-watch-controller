@@ -53,6 +53,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxSize
+import com.example.myapplication.mobile.telemetry.DanceMoveEvent
+import com.example.myapplication.mobile.telemetry.DanceMoveRating
 import com.example.myapplication.mobile.telemetry.DanceSessionSummary
 import com.example.myapplication.mobile.telemetry.HeartRateZone
 import com.example.myapplication.mobile.ui.theme.NeonCyan
@@ -60,6 +69,7 @@ import com.example.myapplication.mobile.ui.theme.NeonGold
 import com.example.myapplication.mobile.ui.theme.NeonGreen
 import com.example.myapplication.mobile.ui.theme.NeonMagenta
 import com.example.myapplication.mobile.ui.theme.NeonPurple
+import com.example.myapplication.mobile.ui.theme.StageBackground
 import com.example.myapplication.mobile.ui.theme.StageBorder
 import com.example.myapplication.mobile.ui.theme.StageSurface
 import com.example.myapplication.mobile.ui.theme.StageSurfaceVariant
@@ -351,6 +361,362 @@ fun HeartRateSparkline(
 }
 
 /**
+ * Indicador visual de puntuación y estrellas estilo Just Dance.
+ */
+@Composable
+fun StarsRatingDisplay(
+    starsLevel: Int,
+    score: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        val starsCount = starsLevel.coerceIn(0, 7)
+        if (starsCount >= 7) {
+            Text(
+                text = "💎 MEGASTAR",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = NeonCyan
+            )
+            Text(text = "⭐⭐⭐⭐⭐", fontSize = 11.sp, color = NeonGold)
+        } else if (starsCount == 6) {
+            Text(
+                text = "👑 SUPERSTAR",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = NeonGold
+            )
+            Text(text = "⭐⭐⭐⭐⭐", fontSize = 11.sp, color = NeonGold)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                for (i in 1..5) {
+                    Text(
+                        text = "★",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (i <= starsCount) NeonGold else TextMuted.copy(alpha = 0.35f)
+                    )
+                }
+            }
+        }
+
+        if (score > 0) {
+            val formattedScore = java.text.NumberFormat.getIntegerInstance(Locale.US).format(score)
+            Text(
+                text = "$formattedScore PTS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = TextPrimary
+            )
+        }
+    }
+}
+
+/**
+ * Gráfico temporal de movimientos (Move Timeline Ribbon) codificado por colores de Ubisoft:
+ * - PERFECT: Verde neón (#00FF88)
+ * - SUPER: Turquesa / cian (#00E5FF)
+ * - GOOD: Azul eléctrico (#2979FF)
+ * - OK: Morado (#A855F7)
+ * - GOLD MOVE: Dorado (#FFD700)
+ */
+@Composable
+fun MoveTimelineRibbon(
+    moves: List<DanceMoveEvent>,
+    durationSeconds: Long,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "LÍNEA TEMPORAL DE MOVIMIENTOS",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextSecondary,
+                letterSpacing = 0.5.sp
+            )
+            Text(
+                text = "${moves.size} gestos rítmicos",
+                fontSize = 9.sp,
+                color = TextMuted
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        val maxDuration = durationSeconds.coerceAtLeast(1).toFloat()
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(StageBackground)
+                .border(1.dp, StageBorder, RoundedCornerShape(6.dp))
+        ) {
+            if (moves.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Sin movimientos registrados", fontSize = 10.sp, color = TextMuted)
+                }
+            } else {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    val w = size.width
+                    val h = size.height
+
+                    // Línea horizontal guía sutil
+                    drawLine(
+                        color = StageBorder.copy(alpha = 0.5f),
+                        start = Offset(0f, h / 2f),
+                        end = Offset(w, h / 2f),
+                        strokeWidth = 1f
+                    )
+
+                    // Dibujar cada gesto rítmico en su tiempo de ejecución
+                    moves.forEach { move ->
+                        val normX = (move.timestampOffsetSeconds / maxDuration).coerceIn(0f, 1f) * w
+                        val ratingColor = Color(move.rating.colorHex)
+
+                        if (move.rating == DanceMoveRating.GOLD_MOVE) {
+                            drawLine(
+                                color = ratingColor,
+                                start = Offset(normX, 2f),
+                                end = Offset(normX, h - 2f),
+                                strokeWidth = 3.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        } else {
+                            val fraction = when (move.rating) {
+                                DanceMoveRating.PERFECT -> 0.85f
+                                DanceMoveRating.SUPER -> 0.70f
+                                DanceMoveRating.GOOD -> 0.55f
+                                DanceMoveRating.OK -> 0.40f
+                                else -> 0.40f
+                            }
+                            val barHeight = h * fraction
+                            val topY = (h - barHeight) / 2f
+                            val bottomY = topY + barHeight
+
+                            drawLine(
+                                color = ratingColor,
+                                start = Offset(normX, topY),
+                                end = Offset(normX, bottomY),
+                                strokeWidth = 2.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("0:00", fontSize = 9.sp, color = TextMuted)
+            val min = durationSeconds / 60
+            val sec = durationSeconds % 60
+            Text(String.format(Locale.US, "%d:%02d", min, sec), fontSize = 9.sp, color = TextMuted)
+        }
+    }
+}
+
+/**
+ * Tarjetas de desglose de aciertos rítmicos (Perfect, Super, Good, OK, Gold Moves).
+ */
+@Composable
+fun MoveAccuracyStats(
+    moves: List<DanceMoveEvent>,
+    goldMovesHit: Int,
+    modifier: Modifier = Modifier
+) {
+    val totalMoves = moves.size.coerceAtLeast(1)
+    val perfects = moves.count { it.rating == DanceMoveRating.PERFECT }
+    val supers = moves.count { it.rating == DanceMoveRating.SUPER }
+    val goods = moves.count { it.rating == DanceMoveRating.GOOD }
+    val oks = moves.count { it.rating == DanceMoveRating.OK }
+    val goldMoves = if (goldMovesHit > 0) goldMovesHit else moves.count { it.rating == DanceMoveRating.GOLD_MOVE }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            AccuracyChip(
+                modifier = Modifier.weight(1f),
+                label = "PERFECT",
+                count = perfects,
+                pct = (perfects * 100f / totalMoves).toInt(),
+                color = Color(DanceMoveRating.PERFECT.colorHex)
+            )
+
+            AccuracyChip(
+                modifier = Modifier.weight(1f),
+                label = "SUPER",
+                count = supers,
+                pct = (supers * 100f / totalMoves).toInt(),
+                color = Color(DanceMoveRating.SUPER.colorHex)
+            )
+
+            AccuracyChip(
+                modifier = Modifier.weight(1f),
+                label = "GOOD",
+                count = goods,
+                pct = (goods * 100f / totalMoves).toInt(),
+                color = Color(DanceMoveRating.GOOD.colorHex)
+            )
+
+            AccuracyChip(
+                modifier = Modifier.weight(1f),
+                label = "OK",
+                count = oks,
+                pct = (oks * 100f / totalMoves).toInt(),
+                color = Color(DanceMoveRating.OK.colorHex)
+            )
+
+            if (goldMoves > 0) {
+                AccuracyChip(
+                    modifier = Modifier.weight(1f),
+                    label = "YEAH!",
+                    count = goldMoves,
+                    pct = null,
+                    color = Color(DanceMoveRating.GOLD_MOVE.colorHex)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AccuracyChip(
+    modifier: Modifier = Modifier,
+    label: String,
+    count: Int,
+    pct: Int?,
+    color: Color
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(StageBackground)
+            .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+            .padding(vertical = 4.dp, horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            color = color,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "$count",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+        if (pct != null) {
+            Text(
+                text = "$pct%",
+                fontSize = 8.sp,
+                color = TextMuted
+            )
+        }
+    }
+}
+
+/**
+ * Barra segmentada multicolor para distribución en zonas cardíacas (aeróbica y anaeróbica).
+ */
+@Composable
+fun HeartRateZonesSegmentedBar(
+    timeInZones: Map<HeartRateZone, Long>,
+    totalSeconds: Long,
+    modifier: Modifier = Modifier
+) {
+    val duration = totalSeconds.coerceAtLeast(1)
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = "DISTRIBUCIÓN AERÓBICA Y ANAERÓBICA",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextSecondary,
+            letterSpacing = 0.5.sp
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Barra segmentada continua
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(StageBackground)
+        ) {
+            HeartRateZone.entries.forEach { zone ->
+                val sec = timeInZones[zone] ?: 0L
+                val weight = sec.toFloat() / duration.toFloat()
+                if (weight > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(weight)
+                            .background(zone.getZoneColor())
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Leyendas de zonas activas
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            HeartRateZone.entries.forEach { zone ->
+                val sec = timeInZones[zone] ?: 0L
+                val pct = (sec * 100f / duration).toInt()
+                if (pct > 0) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(zone.getZoneColor())
+                        )
+                        Text(
+                            text = "${zone.title.take(6)}: $pct%",
+                            fontSize = 9.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Diálogo de Resumen de Entrenamiento al terminar una coreografía.
  */
 @Composable
@@ -370,16 +736,16 @@ fun DanceSessionSummaryDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("🏆", fontSize = 36.sp)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text("🏆", fontSize = 34.sp)
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "¡RITMO DE BAILE COMPLETADO!",
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Black,
                     color = NeonGold,
                     textAlign = TextAlign.Center
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "🎵 ${summary.songTitle}",
                     fontSize = 14.sp,
@@ -387,66 +753,99 @@ fun DanceSessionSummaryDialog(
                     color = NeonCyan,
                     textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                StarsRatingDisplay(
+                    starsLevel = summary.starsLevel,
+                    score = summary.gameScore
+                )
+                if (summary.coachIndex > 0) {
+                    Text(
+                        text = "Bailarín: Coach ${summary.coachIndex + 1}",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Métricas principales (Tiempo, Calorías, Pico G)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("TIEMPO", fontSize = 11.sp, color = TextMuted)
-                        Text(timeFormatted, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("TIEMPO", fontSize = 10.sp, color = TextMuted)
+                        Text(timeFormatted, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("CALORÍAS", fontSize = 11.sp, color = TextMuted)
+                        Text("CALORÍAS", fontSize = 10.sp, color = TextMuted)
                         Text(
                             String.format(Locale.US, "%.1f kcal", summary.totalCaloriesKcal),
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = NeonGold
                         )
                     }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("PICO G", fontSize = 10.sp, color = TextMuted)
+                        Text(
+                            String.format(Locale.US, "%.1f G", summary.peakDanceEnergyG.coerceAtLeast(summary.averageDanceEnergyG)),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonMagenta
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
+                // Frecuencia Cardíaca
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("FC PROMEDIO", fontSize = 11.sp, color = TextMuted)
-                        Text("${summary.avgHeartRateBpm.toInt()} BPM", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                        Text("FC PROMEDIO", fontSize = 10.sp, color = TextMuted)
+                        Text("${summary.avgHeartRateBpm.toInt()} BPM", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("FC MÁXIMA", fontSize = 11.sp, color = TextMuted)
-                        Text("${summary.maxHeartRateBpm.toInt()} BPM", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = NeonMagenta)
+                        Text("FC MÁXIMA", fontSize = 10.sp, color = TextMuted)
+                        Text("${summary.maxHeartRateBpm.toInt()} BPM", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NeonMagenta)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("FC MÍNIMA", fontSize = 10.sp, color = TextMuted)
+                        Text("${summary.minHeartRateBpm.toInt()} BPM", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NeonGreen)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                Text("Distribución en Zonas Aeróbicas:", fontSize = 12.sp, color = TextSecondary)
-                Spacer(modifier = Modifier.height(6.dp))
+                // Línea Temporal de Movimientos
+                MoveTimelineRibbon(
+                    moves = summary.moveEvents,
+                    durationSeconds = summary.durationSeconds
+                )
 
-                val totalDuration = summary.durationSeconds.coerceAtLeast(1)
-                HeartRateZone.entries.forEach { zone ->
-                    val zoneSec = summary.timeInZonesSeconds[zone] ?: 0L
-                    val pct = (zoneSec * 100f / totalDuration).toInt()
-                    if (pct > 0) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(zone.title, fontSize = 11.sp, color = zone.getZoneColor())
-                            Text("$pct% ($zoneSec s)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Desglose de precisión
+                MoveAccuracyStats(
+                    moves = summary.moveEvents,
+                    goldMovesHit = summary.goldMovesHit
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Distribución en Zonas Aeróbicas y Anaeróbicas
+                HeartRateZonesSegmentedBar(
+                    timeInZones = summary.timeInZonesSeconds,
+                    totalSeconds = summary.durationSeconds
+                )
             }
         },
         confirmButton = {
@@ -587,6 +986,171 @@ fun ProfileSettingsDialog(
 }
 
 /**
+ * Tarjeta individual expandible para cada sesión de baile en el historial.
+ */
+@Composable
+fun ExpandableHistoryCard(
+    session: DanceSessionSummary,
+    dateFormat: java.text.SimpleDateFormat
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    val durationMin = session.durationSeconds / 60
+    val durationSec = session.durationSeconds % 60
+    val formattedDuration = String.format(Locale.US, "%d:%02d", durationMin, durationSec)
+    val dateStr = dateFormat.format(java.util.Date(session.timestamp))
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .clickable { isExpanded = !isExpanded },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = StageSurfaceVariant),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = Brush.horizontalGradient(
+                if (isExpanded) listOf(NeonCyan, NeonMagenta) else listOf(StageBorder, StageBorder)
+            )
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Fila 1: Título y Fecha + Indicador de expansión
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🎵 ${session.songTitle}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonCyan,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = dateStr,
+                    fontSize = 10.sp,
+                    color = TextMuted
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (isExpanded) "▲" else "▼",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isExpanded) NeonCyan else TextMuted
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Fila 2: Estrellas y Puntuación
+            StarsRatingDisplay(
+                starsLevel = session.starsLevel,
+                score = session.gameScore
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Fila 3: Métricas rápidas (Calorías, Duración, FC Promedio)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "🔥 ${String.format(Locale.US, "%.1f", session.totalCaloriesKcal)} kcal",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonMagenta
+                )
+                Text(
+                    text = "⏱️ $formattedDuration",
+                    fontSize = 11.sp,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "❤️ ${session.avgHeartRateBpm.toInt()} bpm",
+                    fontSize = 11.sp,
+                    color = NeonGreen
+                )
+            }
+
+            // Sección Expandible Detallada
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.padding(top = 10.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(StageBorder)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (session.coachIndex > 0) {
+                        Text(
+                            text = "Bailarín: Coach ${session.coachIndex + 1}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonGold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
+                    // 1. Gráfico temporal de movimientos (Move Timeline Ribbon)
+                    MoveTimelineRibbon(
+                        moves = session.moveEvents,
+                        durationSeconds = session.durationSeconds
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 2. Desglose de precisión de movimientos
+                    MoveAccuracyStats(
+                        moves = session.moveEvents,
+                        goldMovesHit = session.goldMovesHit
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 3. Métricas biométricas del sensor del reloj
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("PICO G", fontSize = 9.sp, color = TextMuted)
+                            val peak = session.peakDanceEnergyG.coerceAtLeast(session.averageDanceEnergyG)
+                            Text("${String.format(Locale.US, "%.1f", peak)} G", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NeonMagenta)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("FC MÁXIMA", fontSize = 9.sp, color = TextMuted)
+                            Text("${session.maxHeartRateBpm.toInt()} BPM", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("FC MÍNIMA", fontSize = 9.sp, color = TextMuted)
+                            Text("${session.minHeartRateBpm.toInt()} BPM", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NeonGreen)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 4. Barra segmentada de zonas cardíacas (aeróbica y anaeróbica)
+                    HeartRateZonesSegmentedBar(
+                        timeInZones = session.timeInZonesSeconds,
+                        totalSeconds = session.durationSeconds
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * Diálogo de Historial de Sesiones de Baile y Modo Sweat acumulado.
  */
 @Composable
@@ -624,7 +1188,7 @@ fun DanceHistoryDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(400.dp)
+                    .height(440.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 // Tarjeta de Totales Acumulados
@@ -679,68 +1243,11 @@ fun DanceHistoryDialog(
                         )
                     }
                 } else {
-                    history.forEachIndexed { index, session ->
-                        val durationMin = session.durationSeconds / 60
-                        val durationSec = session.durationSeconds % 60
-                        val formattedDuration = String.format(Locale.US, "%d:%02d", durationMin, durationSec)
-                        val dateStr = dateFormat.format(java.util.Date(session.timestamp))
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 5.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = StageSurfaceVariant),
-                            border = CardDefaults.outlinedCardBorder().copy(
-                                brush = Brush.horizontalGradient(listOf(StageBorder, StageBorder))
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "🎵 ${session.songTitle}",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = NeonCyan,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = dateStr,
-                                        fontSize = 10.sp,
-                                        color = TextMuted
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "🔥 ${String.format(Locale.US, "%.1f", session.totalCaloriesKcal)} kcal",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = NeonMagenta
-                                    )
-                                    Text(
-                                        text = "⏱️ $formattedDuration",
-                                        fontSize = 12.sp,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "❤️ ${session.avgHeartRateBpm.toInt()} bpm (máx ${session.maxHeartRateBpm.toInt()})",
-                                        fontSize = 12.sp,
-                                        color = NeonGreen
-                                    )
-                                }
-                            }
-                        }
+                    history.forEach { session ->
+                        ExpandableHistoryCard(
+                            session = session,
+                            dateFormat = dateFormat
+                        )
                     }
                 }
             }

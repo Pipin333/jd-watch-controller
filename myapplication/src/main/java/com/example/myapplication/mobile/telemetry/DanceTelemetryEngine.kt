@@ -29,6 +29,26 @@ enum class HeartRateZone(
 }
 
 /**
+ * Calificación de precisión de un movimiento de baile según cinemática y eventos del juego.
+ */
+enum class DanceMoveRating(val label: String, val colorHex: Long) {
+    PERFECT("PERFECT", 0xFF00FF88),     // Verde Neón
+    SUPER("SUPER", 0xFF00E5FF),         // Turquesa Neón
+    GOOD("GOOD", 0xFF2979FF),           // Azul Eléctrico
+    OK("OK", 0xFFA855F7),               // Morado Neón
+    GOLD_MOVE("GOLD MOVE", 0xFFFFD700)  // Dorado
+}
+
+/**
+ * Evento individual de movimiento evaluado a lo largo de la coreografía.
+ */
+data class DanceMoveEvent(
+    val timestampOffsetSeconds: Float,
+    val rating: DanceMoveRating,
+    val peakG: Float
+)
+
+/**
  * Resumen consolidado al finalizar una coreografía o sesión de baile.
  */
 data class DanceSessionSummary(
@@ -39,8 +59,14 @@ data class DanceSessionSummary(
     val maxHeartRateBpm: Float,
     val minHeartRateBpm: Float,
     val averageDanceEnergyG: Float,
+    val peakDanceEnergyG: Float = 0f,
     val timeInZonesSeconds: Map<HeartRateZone, Long>,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val gameScore: Int = 0,
+    val starsLevel: Int = 0,
+    val goldMovesHit: Int = 0,
+    val coachIndex: Int = 0,
+    val moveEvents: List<DanceMoveEvent> = emptyList()
 )
 
 /**
@@ -92,11 +118,23 @@ class DanceTelemetryEngine(
     private val _isSessionPaused = MutableStateFlow(false)
     val isSessionPaused: StateFlow<Boolean> = _isSessionPaused.asStateFlow()
 
+    // Métricas del juego para la sesión activa
+    val currentGameScore = MutableStateFlow(0)
+    val currentStarsLevel = MutableStateFlow(0)
+    val currentCoachIndex = MutableStateFlow(0)
+
     // Búferes y métricas internas
     private var sessionJob: Job? = null
     private var lastBpm: Float = 0f
     private val hrSamplesInSession = mutableListOf<Float>()
     private val zoneCounters = mutableMapOf<HeartRateZone, Long>()
+
+    // Línea de tiempo de movimientos en la sesión activa
+    private val recordedMoveEvents = mutableListOf<DanceMoveEvent>()
+    private var goldMovesCount = 0
+    private var peakGInSession = 0f
+    private var lastMoveTimestampMs = 0L
+    private val MIN_MOVE_INTERVAL_MS = 380L
 
     // Búfer acumulador de energía cinemática a 50 Hz
     @Volatile
@@ -130,6 +168,12 @@ class DanceTelemetryEngine(
         _lastCompletedSummary.value = null
         _heartRateHistory.value = emptyList()
         hrSamplesInSession.clear()
+        recordedMoveEvents.clear()
+        goldMovesCount = 0
+        peakGInSession = 0f
+        lastMoveTimestampMs = 0L
+        currentGameScore.value = 0
+        currentStarsLevel.value = 0
         HeartRateZone.entries.forEach { zoneCounters[it] = 0L }
 
         sessionJob?.cancel()
@@ -141,6 +185,23 @@ class DanceTelemetryEngine(
                 }
             }
         }
+    }
+
+    /**
+     * Registra un movimiento dorado (Gold Move / YEAH!) detectado desde el juego.
+     */
+    fun registerGoldMove() {
+        if (!_isSessionActive.value) return
+        goldMovesCount++
+        val offsetSec = _sessionDurationSeconds.value.toFloat()
+        // Si el último movimiento registrado fue hace menos de 1.5s, lo promovemos a GOLD_MOVE
+        if (recordedMoveEvents.isNotEmpty() && (offsetSec - recordedMoveEvents.last().timestampOffsetSeconds) < 1.5f) {
+            val last = recordedMoveEvents.removeAt(recordedMoveEvents.size - 1)
+            recordedMoveEvents.add(last.copy(rating = DanceMoveRating.GOLD_MOVE))
+        } else {
+            recordedMoveEvents.add(DanceMoveEvent(offsetSec, DanceMoveRating.GOLD_MOVE, peakGInSession))
+        }
+        android.util.Log.i("DanceTelemetry", "Registered Gold Move! Total in session: $goldMovesCount")
     }
 
     /**
@@ -181,6 +242,37 @@ class DanceTelemetryEngine(
             val maxHr = hrSamplesInSession.maxOrNull() ?: avgHr
             val minHr = hrSamplesInSession.minOrNull() ?: avgHr
 
+            val calculatedScore = if (currentGameScore.value > 0) {
+                currentGameScore.value
+            } else {
+                var pts = 0
+                for (ev in recordedMoveEvents) {
+                    pts += when (ev.rating) {
+                        DanceMoveRating.GOLD_MOVE -> 1000
+                        DanceMoveRating.PERFECT -> 300
+                        DanceMoveRating.SUPER -> 200
+                        DanceMoveRating.GOOD -> 100
+                        DanceMoveRating.OK -> 50
+                    }
+                }
+                pts.coerceAtMost(13333)
+            }
+
+            val calculatedStars = if (currentStarsLevel.value > 0) {
+                currentStarsLevel.value
+            } else {
+                when {
+                    calculatedScore >= 12000 -> 7 // Megastar
+                    calculatedScore >= 11000 -> 6 // Superstar
+                    calculatedScore >= 10000 -> 5 // 5 Stars
+                    calculatedScore >= 8000 -> 4  // 4 Stars
+                    calculatedScore >= 6000 -> 3  // 3 Stars
+                    calculatedScore >= 4000 -> 2  // 2 Stars
+                    calculatedScore >= 2000 -> 1  // 1 Star
+                    else -> 0
+                }
+            }
+
             val s = DanceSessionSummary(
                 songTitle = currentSongTitle.value,
                 durationSeconds = duration,
@@ -189,15 +281,21 @@ class DanceTelemetryEngine(
                 maxHeartRateBpm = maxHr,
                 minHeartRateBpm = minHr,
                 averageDanceEnergyG = _liveIntensityEnergyG.value,
-                timeInZonesSeconds = HashMap(zoneCounters)
+                peakDanceEnergyG = peakGInSession,
+                timeInZonesSeconds = HashMap(zoneCounters),
+                gameScore = calculatedScore,
+                starsLevel = calculatedStars,
+                goldMovesHit = goldMovesCount,
+                coachIndex = currentCoachIndex.value,
+                moveEvents = ArrayList(recordedMoveEvents)
             )
 
             android.util.Log.i(
                 "DanceTelemetry",
-                "=== DANCE SESSION COMPLETED === Song: ${s.songTitle}, Duration: ${duration}s, " +
+                "=== DANCE SESSION COMPLETED === Song: ${s.songTitle}, Score: ${s.gameScore}, Stars: ${s.starsLevel}, " +
+                "Duration: ${duration}s, Moves: ${s.moveEvents.size}, GoldMoves: ${s.goldMovesHit}, " +
                 "Calories: ${String.format(java.util.Locale.US, "%.1f", s.totalCaloriesKcal)} kcal, " +
-                "BPM Avg: ${String.format(java.util.Locale.US, "%.1f", s.avgHeartRateBpm)} (Max: ${s.maxHeartRateBpm.toInt()}, Min: ${s.minHeartRateBpm.toInt()}), " +
-                "Energy: ${String.format(java.util.Locale.US, "%.2f", s.averageDanceEnergyG)}G, Zones: ${s.timeInZonesSeconds}"
+                "BPM Avg: ${String.format(java.util.Locale.US, "%.1f", s.avgHeartRateBpm)} (Max: ${s.maxHeartRateBpm.toInt()})"
             )
 
             historyManager?.saveSession(s)
@@ -246,7 +344,7 @@ class DanceTelemetryEngine(
 
     /**
      * Procesa una muestra de acelerómetro tridimensional a 50 Hz.
-     * Calcula la energía cinética del gesto de baile sin generar objetos en el heap.
+     * Calcula la energía cinética del gesto de baile y clasifica impactos rítmicos en tiempo real.
      */
     fun feedMotionSample(gx: Float, gy: Float, gz: Float) {
         // Magnitud neta del vector aceleración restando 1g constante de gravedad estática
@@ -255,6 +353,26 @@ class DanceTelemetryEngine(
 
         accelSumMagnitudeInSecond += dynamicEnergy
         accelSamplesInSecond++
+
+        if (rawMag > peakGInSession) {
+            peakGInSession = rawMag
+        }
+
+        // Clasificación cinemática en tiempo real de movimientos rítmicos durante baile activo
+        if (_isSessionActive.value && !_isSessionPaused.value) {
+            val now = System.currentTimeMillis()
+            if (dynamicEnergy >= 0.70 && (now - lastMoveTimestampMs) >= MIN_MOVE_INTERVAL_MS) {
+                lastMoveTimestampMs = now
+                val rating = when {
+                    dynamicEnergy >= 2.30 -> DanceMoveRating.PERFECT
+                    dynamicEnergy >= 1.55 -> DanceMoveRating.SUPER
+                    dynamicEnergy >= 1.05 -> DanceMoveRating.GOOD
+                    else -> DanceMoveRating.OK
+                }
+                val offsetSec = _sessionDurationSeconds.value.toFloat() + ((now % 1000L) / 1000f)
+                recordedMoveEvents.add(DanceMoveEvent(offsetSec, rating, rawMag))
+            }
+        }
     }
 
     /**

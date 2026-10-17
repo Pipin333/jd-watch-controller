@@ -1,8 +1,8 @@
-# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.0
+# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.1
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Wear%20OS-brightgreen.svg)](https://developer.android.com)
-[![Release](https://img.shields.io/badge/Release-v0.1.0-magenta.svg)](https://github.com/Pipin333/jd-watch-controller/releases)
+[![Release](https://img.shields.io/badge/Release-v0.1.1-magenta.svg)](https://github.com/Pipin333/jd-watch-controller/releases)
 
 **[English](README.md)** • [Español](README_ES.md) • [Português](README_PT.md)
 
@@ -11,17 +11,19 @@
 
 ---
 
-## 🌟 What's New in v0.1.0
+## 🌟 What's New in v0.1.1
 
-* 🕺 **Coach / Dancer Selection:** For multi-dancer songs, duets, trios, and quartets (e.g. *Dragostea Din Tei*), select your Coach directly from your phone (Coach 1–4) and navigate/confirm in console menus with one tap.
-* 🎯 **Precision Accelerometer Tuning (1.20x Wrist Boost):** High-precision kinematic gain selector (`1.0x`, `1.15x`, `1.20x ★`, `1.25x`, `1.30x`) to compensate for the wrist's shorter rotational lever arm ($r_{\text{wrist}} < r_{\text{hand}}$) and effortlessly achieve 11.5k–13k Megastar scores.
-* ⏸️ **Calibrated Gesture Pause:** Requires a **deliberate triple-shake gesture at 3.7g (36 m/s²)** with a 3-second cooldown, completely eliminating accidental pauses during vigorous arm swings.
-* 📊 **Continuous Sweat Sessions (Zero Fragmentation):** Pauses now freeze the timer and preserve calorie counters without ending the session or cluttering your history with duplicate entries. Automatically finalizes upon receiving the official game Recap screen.
-* 📳 **Immersive Haptic Feedback on Smartwatch (LRA Haptic Motor):**
-  * 🌟 **Gold Move ("YEAH!"):** Heavy, deep double-burst (`[0, 150, 50, 250]` ms @ 200/255) emulating the rush of landing a Gold Move.
-  * ⭐ **Star Unlock (1–5, Superstar, Megastar):** Ascending triple-pulse fanfare (`[0, 80, 40, 80, 40, 140]` ms @ 120/180/255) to know your score milestones without looking at the screen.
-  * ✨ **Perfect Move:** Crisp, sharp micro-click (35 ms).
-* 🏷️ **Smart Choreography Recognition:** Automated extraction of real song titles from game packets, actively filtering out tutorial tips and system tooltips.
+* 📈 **Color-Coded Move Timeline Ribbon:** Interactive timeline visualization plotting your moves over the choreography with Ubisoft's iconic scoring palette:
+  * 🟢 **PERFECT:** Neon Green (`#00FF88`)
+  * 🔷 **SUPER:** Neon Turquoise / Cyan (`#00E5FF`)
+  * 🔵 **GOOD:** Electric Blue (`#2979FF`)
+  * 🟣 **OK:** Neon Purple (`#A855F7`)
+  * 🌟 **YEAH! / GOLD MOVE:** Ubisoft Gold (`#FFD700`)
+* 🎯 **Move Accuracy Breakdown:** Immediate count and percentage distribution for every move rating (Perfect, Super, Good, OK) and total Gold Moves nailed.
+* 🏆 **Game Performance & Star Badges:** Detailed recording of official score (pts) and star progression (1–5 Stars, Superstar 👑, Megastar 💎) plus dancer index (Coach 1–4).
+* ❤️ **Heart Rate & Kinetic Zones Segmented Ribbon:** Multi-colored aerobic/anaerobic progress bar tracking your cardiovascular effort (Rest/Warmup, Fat Burn, Cardio Aerobic, Anaerobic Intense, Max Effort) and peak G-force acceleration.
+* 📂 **Expandable Session History Cards:** Tap any song card in your history to reveal its full dance telemetry ribbon, biometrics, and precision chips.
+* ⚡ **Lean Watch Architecture:** The smartwatch streams pure 50 Hz accelerometer packets to conserve battery life; all kinematic analysis, rhythm detection, and rendering are handled on the smartphone.
 
 ---
 

@@ -45,6 +45,27 @@ class DanceSessionHistoryManager(context: Context) {
                     }
                 }
 
+                val movesList = mutableListOf<DanceMoveEvent>()
+                if (obj.has("moves")) {
+                    val movesArr = obj.getJSONArray("moves")
+                    for (j in 0 until movesArr.length()) {
+                        val mObj = movesArr.getJSONObject(j)
+                        val ratingStr = mObj.optString("r", "PERFECT")
+                        val rating = try {
+                            DanceMoveRating.valueOf(ratingStr)
+                        } catch (_: Exception) {
+                            DanceMoveRating.PERFECT
+                        }
+                        movesList.add(
+                            DanceMoveEvent(
+                                timestampOffsetSeconds = mObj.optDouble("t", 0.0).toFloat(),
+                                rating = rating,
+                                peakG = mObj.optDouble("g", 1.0).toFloat()
+                            )
+                        )
+                    }
+                }
+
                 list.add(
                     DanceSessionSummary(
                         songTitle = obj.optString("songTitle", "Coreografía Just Dance"),
@@ -54,8 +75,14 @@ class DanceSessionHistoryManager(context: Context) {
                         maxHeartRateBpm = obj.optDouble("maxHeartRateBpm", 0.0).toFloat(),
                         minHeartRateBpm = obj.optDouble("minHeartRateBpm", 0.0).toFloat(),
                         averageDanceEnergyG = obj.optDouble("averageDanceEnergyG", 0.0).toFloat(),
+                        peakDanceEnergyG = obj.optDouble("peakDanceEnergyG", 0.0).toFloat(),
                         timeInZonesSeconds = zonesMap,
-                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                        gameScore = obj.optInt("gameScore", 0),
+                        starsLevel = obj.optInt("starsLevel", 0),
+                        goldMovesHit = obj.optInt("goldMovesHit", 0),
+                        coachIndex = obj.optInt("coachIndex", 0),
+                        moveEvents = movesList
                     )
                 )
             }
@@ -84,13 +111,29 @@ class DanceSessionHistoryManager(context: Context) {
                     put("maxHeartRateBpm", s.maxHeartRateBpm.toDouble())
                     put("minHeartRateBpm", s.minHeartRateBpm.toDouble())
                     put("averageDanceEnergyG", s.averageDanceEnergyG.toDouble())
+                    put("peakDanceEnergyG", s.peakDanceEnergyG.toDouble())
                     put("timestamp", s.timestamp)
+                    put("gameScore", s.gameScore)
+                    put("starsLevel", s.starsLevel)
+                    put("goldMovesHit", s.goldMovesHit)
+                    put("coachIndex", s.coachIndex)
 
                     val zonesObj = JSONObject()
                     s.timeInZonesSeconds.forEach { (zone, seconds) ->
                         zonesObj.put(zone.name, seconds)
                     }
                     put("zones", zonesObj)
+
+                    val movesArr = JSONArray()
+                    s.moveEvents.forEach { ev ->
+                        val mObj = JSONObject().apply {
+                            put("t", ev.timestampOffsetSeconds.toDouble())
+                            put("r", ev.rating.name)
+                            put("g", ev.peakG.toDouble())
+                        }
+                        movesArr.put(mObj)
+                    }
+                    put("moves", movesArr)
                 }
                 jsonArray.put(obj)
             }

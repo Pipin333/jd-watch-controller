@@ -111,6 +111,9 @@ class MainActivity : ComponentActivity() {
         // Configuración de retroalimentación háptica desde el juego al smartwatch
         webSocketClient.onHapticTriggered = { feedbackType ->
             wearReceiver.sendHapticFeedback(feedbackType)
+            if (feedbackType == 2.toByte()) {
+                telemetryEngine.registerGoldMove()
+            }
         }
 
         // Fin oficial de canción detectado desde el juego (pantalla de resultados)
@@ -123,6 +126,9 @@ class MainActivity : ComponentActivity() {
             scope = lifecycleScope,
             onHapticReceived = { feedbackType ->
                 wearReceiver.sendHapticFeedback(feedbackType)
+                if (feedbackType == 2.toByte()) {
+                    telemetryEngine.registerGoldMove()
+                }
             },
             onPauseRequested = {
                 webSocketClient.togglePause()
@@ -162,6 +168,29 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             webSocketClient.currentSongTitle.collect { title ->
                 telemetryEngine.currentSongTitle.value = title
+            }
+        }
+
+        // Sincronizar puntuación, estrellas y coach oficial de Just Dance con la telemetría
+        lifecycleScope.launch {
+            webSocketClient.liveGameScore.collect { score ->
+                if (score > 0) {
+                    telemetryEngine.currentGameScore.value = score
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            webSocketClient.liveStarsCount.collect { stars ->
+                if (stars > 0) {
+                    telemetryEngine.currentStarsLevel.value = stars
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            webSocketClient.currentSelectedCoach.collect { coach ->
+                telemetryEngine.currentCoachIndex.value = coach
             }
         }
 

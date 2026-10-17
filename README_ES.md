@@ -1,4 +1,4 @@
-# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.0
+# 🕺 JD Watch Controller (Wear OS + Android) — v0.1.1
 
 [English](README.md) • **[Español](README_ES.md)** • [Português](README_PT.md)
 
@@ -7,17 +7,19 @@
 
 ---
 
-## 🌟 Novedades en v0.1.0
+## 🌟 Novedades en v0.1.1
 
-* 🕺 **Selector de Bailarín / Coach:** En canciones multijugador, dúos, tríos y cuartetos (ej. *Dragostea Din Tei*), selecciona directamente desde tu teléfono el Coach (1 a 4) y navega/confirma en los menús de la consola con un solo toque.
-* 🎯 **Ajuste Fino de Acelerómetro (1.20x Muñeca):** Selector de ganancia cinemática de alta precisión (`1.0x`, `1.15x`, `1.20x ★`, `1.25x`, `1.30x`) para compensar el menor radio de rotación de la muñeca ($r_{\text{muñeca}} < r_{\text{mano}}$) y alcanzar puntuaciones de 11.5k–13k (Megastar).
-* ⏸️ **Control de Pausa por Gesto Calibrado:** Requiere una **triple sacudida deliberada a 3.7g (36 m/s²)** con cooldown de 3 segundos, eliminando por completo las pausas accidentales durante el baile intenso.
-* 📊 **Sesiones Sweat Continuas sin Fragmentación:** Las pausas intermedias congelan el cronómetro y preservan las calorías sin cortar la sesión ni crear entradas repetidas en el historial. Cierre automático oficial al recibir la pantalla de fin de coreografía (*Recap*).
-* 📳 **Feedback Háptico Inmersivo en Smartwatch (Motor LRA):**
-  * 🌟 **Gold Move ("YEAH!"):** Ráfaga doble pesada y profunda (`[0, 150, 50, 250]` ms @ 200/255).
-  * ⭐ **Desbloqueo de Estrellas (1–5, Superstar, Megastar):** Fanfarria ascendente en triple pulso creciente (`[0, 80, 40, 80, 40, 140]` ms @ 120/180/255).
-  * ✨ **Perfect Move:** Micro-click seco y nítido (35 ms).
-* 🏷️ **Detección Inteligente de Coreografías:** Extracción automática y depurada de títulos reales de canciones, descartando textos de tutoriales o tooltips del juego.
+* 📈 **Línea Temporal de Movimientos por Colores (Move Ribbon):** Visualización interactiva en tiempo real y en diferido de cada movimiento realizado sobre la pista con la paleta oficial de Just Dance:
+  * 🟢 **PERFECT:** Verde neón (`#00FF88`)
+  * 🔷 **SUPER:** Turquesa / Cian neón (`#00E5FF`)
+  * 🔵 **GOOD:** Azul eléctrico (`#2979FF`)
+  * 🟣 **OK:** Morado neón (`#A855F7`)
+  * 🌟 **YEAH! / GOLD MOVE:** Dorado Ubisoft (`#FFD700`)
+* 🎯 **Desglose de Precisión Rítmica:** Conteo y porcentajes instantáneos de cada calificación de paso (Perfect, Super, Good, OK) y ráfagas de Gold Moves conseguidos.
+* 🏆 **Rendimiento de Juego y Medallas de Estrellas:** Registro fiel de la puntuación oficial en puntos y nivel de estrellas (1–5 Estrellas, Superstar 👑, Megastar 💎) junto con el bailarín activo (Coach 1–4).
+* ❤️ **Barra Segmentada de Zonas Aeróbicas y Anaeróbicas:** Visualización proporcional del esfuerzo cardiovascular (Reposo, Quema de Grasa, Cardio Aeróbico, Anaeróbico Intenso y Máximo Esfuerzo) y aceleración de Pico G.
+* 📂 **Tarjetas Expandibles de Historial:** Toca cualquier canción guardada en el historial para desplegar su gráfico temporal completo de movimientos, biometría y métricas de precisión.
+* ⚡ **Arquitectura Liviana en el Reloj:** El smartwatch solo transmite acelerómetro puro a 50 Hz para cuidar la batería; el teléfono procesa toda la cinemática, detección de ritmo y renderizado.
 
 ---
 

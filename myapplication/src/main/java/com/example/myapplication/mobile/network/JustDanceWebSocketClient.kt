@@ -67,8 +67,15 @@ class JustDanceWebSocketClient {
     // Bailarín / coach seleccionado actualmente (0 = Coach 1, 1 = Coach 2, etc.)
     val currentSelectedCoach = MutableStateFlow(0)
 
-    // Multiplicador de sensibilidad para afinar scoring (1.18x recomendado para reloj de muñeca)
-    val sensitivityMultiplier = MutableStateFlow(1.18f)
+    // Puntuación y estrellas oficiales recibidas de la consola
+    private val _liveGameScore = MutableStateFlow(0)
+    val liveGameScore: StateFlow<Int> = _liveGameScore.asStateFlow()
+
+    private val _liveStarsCount = MutableStateFlow(0)
+    val liveStarsCount: StateFlow<Int> = _liveStarsCount.asStateFlow()
+
+    // Multiplicador de sensibilidad para afinar scoring (1.20x recomendado para reloj de muñeca)
+    val sensitivityMultiplier = MutableStateFlow(1.20f)
 
     // Modo de mapeo de muñeca
     val wristMappingMode = MutableStateFlow(WristMappingMode.RIGHT_WRIST_WATCH)
@@ -185,6 +192,8 @@ class JustDanceWebSocketClient {
             } else if (text.contains("JD_EnableAccelValuesSending_ConsoleCommandData")) {
                 _isScoringActive.value = true
                 _connectionState.value = ConnectionState.DANCING
+                _liveGameScore.value = 0
+                _liveStarsCount.value = 0
                 android.util.Log.i("JDWS", "DANCE SCORING ACTIVATED!")
             } else if (text.contains("JD_DisableAccelValuesSending_ConsoleCommandData")) {
                 _isScoringActive.value = false
@@ -210,6 +219,33 @@ class JustDanceWebSocketClient {
             } else if (text.contains("recap", ignoreCase = true) || text.contains("JD_PhoneUiRecap")) {
                 android.util.Log.i("JDWS", "Recap / Song finish screen detected!")
                 onSongCompleted?.invoke()
+            }
+
+            // Detección de puntuación y estrellas oficiales enviadas por la consola
+            val scoreMatch = """"score"\s*:\s*(\d+)""".toRegex().find(text)
+            if (scoreMatch != null) {
+                val sc = scoreMatch.groupValues[1].toIntOrNull() ?: 0
+                if (sc > 0) {
+                    _liveGameScore.value = sc
+                    android.util.Log.i("JDWS", "Official Game Score updated: $sc")
+                }
+            }
+
+            val starsMatch = """"stars"\s*:\s*(\d+)""".toRegex().find(text)
+                ?: """"starsCount"\s*:\s*(\d+)""".toRegex().find(text)
+            if (starsMatch != null) {
+                val st = starsMatch.groupValues[1].toIntOrNull() ?: 0
+                if (st > 0) {
+                    _liveStarsCount.value = st
+                    android.util.Log.i("JDWS", "Official Stars Count updated: $st")
+                }
+            }
+
+            val coachMatch = """"coachId"\s*:\s*(\d+)""".toRegex().find(text)
+                ?: """"coachIndex"\s*:\s*(\d+)""".toRegex().find(text)
+            if (coachMatch != null) {
+                val coach = coachMatch.groupValues[1].toIntOrNull() ?: 0
+                currentSelectedCoach.value = coach
             }
 
             // Detección automática del título de la coreografía desde paquetes de Ubisoft / Just Dance
